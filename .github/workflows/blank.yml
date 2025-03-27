@@ -1,0 +1,83 @@
+	# 需要配置 2 个 secrets:
+# AWS_GITHUB_ACTION_USER_ACCESS_KEY_ID
+# AWS_GITHUB_ACTION_USER_SECRET_ACCESS_KEY
+# 去 AWS 里看
+
+
+name: 测试
+on:
+  workflow_dispatch: # 手动触发
+    inputs:
+      # 单选项：选择要部署的环境
+      app_enviroment:
+        description: '您要部署哪个环境？'
+        required: true
+        default: '测试环境(staging)'
+        type: choice
+        options:
+        - 测试环境(staging)
+      # 勾选：是否发通知到飞书
+      # notification_using_feishu:
+      #   type: boolean
+      #   default: true
+      #   description: 发送通知到飞书
+
+env:
+  AWS_REGION: cn-north-1 # cn-north-1 是 AWS 中国区的北京
+  # feishu_robot_webhook: https://open.feishu.cn/open-apis/bot/v2/hook/f5ed1b87-e7a4-4eea-8a10-6eb8aa210fb3
+
+jobs:
+
+  Deploy-Staging:
+    name: "部署测试环境"
+    runs-on: ubuntu-latest
+    steps:
+    - uses: extractions/setup-just@v3
+      env:
+        github.token: ${{ secrets.MY_GITHUB_TOKEN }}
+    - name: 获取源代码
+      uses: actions/checkout@v3
+      with:
+        ref: self_test # 拿该分支的代码
+        run: echo "当前分支是 ${{ github.ref }}, 仓库是 ${{ github.repository }}"
+      # 注意, 虽然我们用 actions/checkout@v3 拿了 staging 分支的代码。
+	      # 但是 ${{ github.ref }} 还是会输出 "refs/heads/master"，这并不是错误，github.ref 的定义请看：https://docs.github.com/en/actions/learn-github-actions/contexts#github-context
+      # The branch or tag ref that triggered the workflow run. For branches this is the format refs/heads/<branch_name>, and for tags it is refs/tags/<tag_name>.
+
+    - name: 列出文件
+      run: |
+          ls ${{ github.workspace }}
+
+    - uses: unfor19/install-aws-cli-action@v1
+      with:
+        version: 2                         # default
+        verbose: false                     # default
+        arch: amd64                        # allowed values: amd64, arm64
+
+    - name: 输出 aws cli 版本号
+      run: aws --version
+
+    - name: 配置 AWS 身份
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        audience: 127.0.0.1
+        aws-region: ${{ env.AWS_REGION }}
+        aws-access-key-id: ${{ secrets.AWS_GITHUB_ACTION_USER_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_GITHUB_ACTION_USER_SECRET_ACCESS_KEY }}
+
+      # - name: 飞书通知开始部署
+      #   if: inputs.notification_using_feishu
+      #   run: >
+      #     curl -X POST -H "Content-Type: application/json"
+      #     -d '{"msg_type":"text","content":{"text": "[${{github.actor}}] 齐思GPT测试环境: 开始部署" }}'
+      #     ${{env.feishu_robot_webhook}}
+
+    - name: 部署
+      run: just deploy-staging
+
+      # - name: 飞书通知部署完成
+      #   if: inputs.notification_using_feishu
+      #   run: >
+      #     curl -X POST -H "Content-Type: application/json"
+      #     -d '{"msg_type":"text","content":{"text": "[${{github.actor}}] 齐思GPT测试环境: 部署完成" }}'
+      #     ${{env.feishu_robot_webhook}}
